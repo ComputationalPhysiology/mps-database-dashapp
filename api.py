@@ -94,3 +94,6 @@ class Api:
         return self._get(
             f"{self._baseurl}/mps_data/experiment/{experiment_name}",
         )
+
+    def mps_data_detailed_info(self, ids: list[int]):
+        return self._post(f"{self._baseurl}/mps_data/detailed_info", {"ids": ids})

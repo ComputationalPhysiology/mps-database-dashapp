@@ -1,20 +1,16 @@
-from dash import Dash, dash_table, Input, Output, callback, State
-import data
+from dash import Dash, dash_table, Input, Output, callback, State, dcc
 import dash
+
+
 from pathlib import Path
 import os
 from flask_caching import Cache
-
-# import dash_bootstrap_components as dmc
 import dash_mantine_components as dmc
-from api import Api
 
-api = Api(
-    os.getenv("MPS_DATABASE_USERNAME"),
-    os.getenv("MPS_DATABASE_PASSWORD"),
-    baseurl="http://172.16.16.92:8004",
-)
-df = data.get_all_experiments(api)
+from api import Api
+import plots
+import data
+
 
 cache = Cache(
     config={
@@ -27,6 +23,13 @@ cache = Cache(
 )
 app = Dash(__name__)
 cache.init_app(app.server)
+
+api = Api(
+    os.getenv("MPS_DATABASE_USERNAME"),
+    os.getenv("MPS_DATABASE_PASSWORD"),
+    baseurl=os.getenv("MPS_DATABASE_BASEURL"),
+)
+df = data.get_all_experiments(api, cache)
 
 
 app.layout = dmc.MantineProvider(
@@ -66,7 +69,7 @@ app.layout = dmc.MantineProvider(
                             span=5,
                         ),
                         dmc.Col(
-                            use_cache_db := dmc.Select(
+                            use_cache_mps_data_search_db := dmc.Select(
                                 label="Caching",
                                 value="Use cache",
                                 data=["No caching", "Use cache", "Reset cache"],
@@ -121,7 +124,6 @@ app.layout = dmc.MantineProvider(
             },
         ),
         dmc.Container(
-            id="datatable-container",
             children=[
                 dmc.LoadingOverlay(
                     mytable := dash_table.DataTable(
@@ -133,6 +135,7 @@ app.layout = dmc.MantineProvider(
                             {"name": "Trace type", "id": "trace_type", "type": "text"},
                         ],
                         selected_rows=[],
+                        selected_row_ids=[],
                         filter_action="native",
                         page_size=10,
                         row_selectable="multi",
@@ -149,11 +152,156 @@ app.layout = dmc.MantineProvider(
                         },
                     ),
                 ),
-                dmc.Text(id="some-output"),
+            ],
+        ),
+        dmc.Container(
+            children=[
+                dmc.Grid(
+                    children=[
+                        dmc.Col(search_mps_data_btn := dmc.Button("Load data"), span=2),
+                        dmc.Col(
+                            use_cache_mps_data_load_db := dmc.Select(
+                                value="Use cache",
+                                data=["No caching", "Use cache", "Reset cache"],
+                            ),
+                            span=2,
+                        ),
+                    ]
+                ),
+            ],
+            style={
+                "marginTop": 10,
+                "marginBottom": 10,
+            },
+        ),
+        dcc.Store(id="mps-data-store"),
+        dmc.Container(
+            children=[
+                dmc.Container(
+                    children=[
+                        dmc.Grid(
+                            children=[
+                                dmc.Col(
+                                    trace_select_db := dmc.Select(
+                                        label="Select Trace",
+                                        value="fluorescence",
+                                        data=[
+                                            {
+                                                "value": "fluorescence",
+                                                "label": "Fluorescence",
+                                            },
+                                            {
+                                                "value": "displacement_norm",
+                                                "label": "Displacement norm",
+                                            },
+                                        ],
+                                    ),
+                                    span=4,
+                                ),
+                                dmc.Col(
+                                    plot_select_db := dmc.Select(
+                                        label="Select plot",
+                                        value="original_trace",
+                                        data=[
+                                            {
+                                                "value": "original_trace",
+                                                "label": "Original Trace",
+                                            },
+                                            {
+                                                "value": "original_trace_w_paing",
+                                                "label": "Original trace wit pacing",
+                                            },
+                                            {"value": "average", "label": "Average"},
+                                            {
+                                                "value": "average_normalized",
+                                                "label": "Average (normalized)",
+                                            },
+                                        ],
+                                    ),
+                                    span=4,
+                                ),
+                                dmc.Col(
+                                    labelby_select_db := dmc.Select(
+                                        label="Label by",
+                                    ),
+                                    span=4,
+                                ),
+                            ]
+                        )
+                    ]
+                ),
+                dmc.Container(children=[dcc.Graph(id="graph")]),
             ],
         ),
     ],
 )
+
+
+def get_detailed_info(row_ids: list[int], use_cache_value: str):
+    info = {}
+
+    if use_cache_value == "Use cache":
+        # Fetch existing data from cache
+        for row_id in row_ids:
+            d_ = cache.get(f"detailed-info-{row_id}")
+
+            if d_ is not None:
+                info[row_id] = d_
+
+    ids_to_fetch = [row_id for row_id in row_ids if row_id not in info]
+    if len(ids_to_fetch) > 0:
+        new_info = api.mps_data_detailed_info(ids_to_fetch)
+    else:
+        new_info = []
+
+    # Make sure we get data in the same order as row_ids
+    d = []
+    for row_id in row_ids:
+        if row_id in info:
+            d.append(info[row_id])
+        else:
+            this_info = new_info[ids_to_fetch.index(row_id)]
+            d.append(this_info)
+            if use_cache_value in ["Use cache", "Reset cache"]:
+                cache.set(f"detailed-info-{row_id}", this_info)
+    return d
+
+
+@callback(
+    Output("mps-data-store", "data"),
+    Output(labelby_select_db, "data"),
+    Input(search_mps_data_btn, "n_clicks"),
+    State(mytable, "derived_virtual_selected_rows"),
+    State(mytable, "derived_virtual_data"),
+    State(use_cache_mps_data_load_db, "value"),
+)
+def search_mps_data(n_clicks, selected_rows, filtered_rows, use_cache_value):
+    print(f"{selected_rows=}, {filtered_rows=}")
+    if selected_rows is None or len(selected_rows) == 0:
+        raise dash.exceptions.PreventUpdate
+
+    rows = [filtered_rows[i]["id"] for i in selected_rows]
+    info = get_detailed_info(rows, use_cache_value=use_cache_value)
+    plot_labels = [] if len(info) == 0 else info[0].get("plot_labels", [])
+
+    return info, plot_labels
+
+
+@callback(
+    Output("graph", "figure"),
+    Input("mps-data-store", "data"),
+    Input(plot_select_db, "value"),
+    Input(trace_select_db, "value"),
+)
+def draw_traces(info, plot_type, trace_type):
+    if plot_type is None:
+        return {}
+    if info is None or len(info) == 0:
+        return {}
+
+    fig = plots.plot_original_trace(info)
+
+    return fig
 
 
 @callback(
@@ -161,21 +309,29 @@ app.layout = dmc.MantineProvider(
     Output(row_drop, "disabled"),
     Input(search_exp_btn, "n_clicks"),
     State(select_exp, "value"),
-    State(use_cache_db, "value"),
+    State(use_cache_mps_data_search_db, "value"),
 )
 def search_experiment(n_clicks, experiment_name, use_cache_value):
     if experiment_name is None:
         return [], True
 
     cache_key = f"search-{experiment_name}"
+
     df = None
     if use_cache_value in "Use cache":
         df = cache.get(cache_key)
 
+    # We don't want to make unnecessary saves to the cache.
+    # If df is None it means that we need to fetch from the database
+    # and it should be stored in the cache if `use_cache value` is either
+    # of "Use cache" or "Reset cache". Otherwise we should not save it
+    # to the cache
+    update_cache = False
     if df is None:
+        update_cache = use_cache_value in ["Use cache", "Reset cache"]
         df = data.get_mps_data_by_experiment(api, experiment_name=experiment_name)
 
-    if use_cache_value in ["Use cache", "Reset cache"]:
+    if update_cache:
         cache.set(cache_key, df)
 
     return df.to_dict("records"), False
@@ -191,16 +347,6 @@ def update_page_size(value, data):
         return len(data)
 
     return int(value)
-
-
-# @callback(
-#     Output("some-output", "value"),
-#     Input(mytable, "selected_row_ids"),
-#     Input(mytable, "active_cell"),
-# )
-# def on_row_click(selected_row_ids, active_cell):
-#     print(f"Click: {active_cell=}, {selected_row_ids=}")
-#     return "Row clicked"
 
 
 @app.callback(
@@ -223,6 +369,7 @@ def selection(
     if filtered_rows is not None:
         if ctx_caller == "select-all-button.n_clicks":
             selected_ids = [row["id"] for row in filtered_rows]
+            print(selected_ids)
             return [
                 [i for i, row in enumerate(original_rows) if row["id"] in selected_ids]
             ]

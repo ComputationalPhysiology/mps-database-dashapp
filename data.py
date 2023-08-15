@@ -1,16 +1,25 @@
 import pandas as pd
 from api import Api
+from flask_caching import Cache
 
 
-def get_all_experiments(_api: Api):
-    data = _api.list_experiments()
+def get_all_experiments(_api: Api, cache: Cache | None = None):
+    df = None
+    if cache is not None:
+        # Try to get the data from the cache
+        df = cache.get("experiments")
 
-    df = pd.DataFrame.from_records(data, columns=("id", "name", "created", "info"))
-    df["name"] = df["name"].astype(str)
-    df["info"] = df["info"].astype(str)
-    df["created"] = df["created"].astype(str)
-    df.set_index("id", inplace=True, drop=False)
-    # df["created"] = pd.to_datetime(df["created"])
+    if df is None:
+        data = _api.list_experiments()
+
+        df = pd.DataFrame.from_records(data, columns=("id", "name", "created", "info"))
+        df["name"] = df["name"].astype(str)
+        df["info"] = df["info"].astype(str)
+        df["created"] = df["created"].astype(str)
+        df.set_index("id", inplace=True, drop=False)
+
+    if cache is not None:
+        cache.set("experiments", df)
 
     return df
 

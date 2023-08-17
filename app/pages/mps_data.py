@@ -1,42 +1,21 @@
 from typing import Any
-import logging
-from pathlib import Path
-import os
 
-from flask_caching import Cache
 import dash_mantine_components as dmc
-from dash import Dash, dash_table, Input, Output, callback, State, dcc
+from dash import dash_table, Input, Output, callback, State, dcc
 import dash
-
-from api import Api
-import plots
-import data
-import enums
-import config
-
-import models
+import logging
 
 
-cache = Cache(
-    config={
-        "CACHE_TYPE": "FileSystemCache",
-        "CACHE_DIR": os.getenv("MPS_DATABASE_CACHE_DIR", Path.home() / ".cache" / "mps_database"),
-        "CACHE_DEFAULT_TIMEOUT": os.getenv("MPS_DATABASE_CACHE_DEFAULT_TIMEOUT", 3600),
-    }
-)
-app = Dash(__name__)
-cache.init_app(app.server)
+from app import plots
+from app import data
+from app import enums
+from app import models
 
+logger = logging.getLogger(__name__)
 
-api = Api(
-    username=config.settings.MPS_DATABASE_USERNAME,
-    password=config.settings.MPS_DATABASE_PASSWORD,
-    baseurl=config.settings.MPS_DATABASE_BASEURL,
-)
-df = data.get_all_experiments(api, cache)
+dash.register_page(__name__, path="/")
 
-
-app.layout = dmc.MantineProvider(
+layout = dmc.MantineProvider(
     theme={
         "fontFamily": "'Inter', sans-serif",
         "primaryColor": "indigo",
@@ -60,11 +39,19 @@ app.layout = dmc.MantineProvider(
                 dmc.Grid(
                     children=[
                         dmc.Col(
+                            load_exp_btn := dmc.Button("Load experiments"),
+                            span=5,
+                        ),
+                        dmc.Col(dmc.Alert("test", title="Success!", color="green"), span=7),
+                    ]
+                ),
+                dmc.Grid(
+                    children=[
+                        dmc.Col(
                             select_exp := dmc.Select(
                                 label="Select experiment",
                                 style={"width": "100%"},
                                 searchable=True,
-                                data=df.name,
                             ),
                             span=5,
                         ),
@@ -93,7 +80,7 @@ app.layout = dmc.MantineProvider(
                         ),
                     ],
                     style={"marginTop": 10, "marginBottom": 10, "padding": 5},
-                )
+                ),
             ],
             style={"width": "100%"},
         ),
@@ -252,14 +239,20 @@ app.layout = dmc.MantineProvider(
 
 def get_detailed_info(row_ids: list[int], use_cache_value: str) -> list[dict[str, Any]]:
     info = {}
+    from app.main import cache, api
 
+    logger.debug(f"Get detailed info: {use_cache_value=}")
     if use_cache_value == "Use cache":
+        logger.debug("Search for data in cache")
         # Fetch existing data from cache
         for row_id in row_ids:
             d_ = cache.get(f"detailed-info-{row_id}")
 
             if d_ is not None:
+                logger.debug(f"Found cached data for {row_id}")
                 info[row_id] = d_
+            else:
+                logger.debug(f"Could not find cached data for {row_id}")
 
     ids_to_fetch = [row_id for row_id in row_ids if row_id not in info]
     if len(ids_to_fetch) > 0:
@@ -289,7 +282,9 @@ def get_detailed_info(row_ids: list[int], use_cache_value: str) -> list[dict[str
     State(use_cache_mps_data_load_db, "value"),
 )
 def search_mps_data(n_clicks, selected_rows, filtered_rows, use_cache_value):
-    print("Search mps_data")
+    if n_clicks == 0:
+        # Not clicked
+        raise dash.exceptions.PreventUpdate
     if selected_rows is None or len(selected_rows) == 0:
         raise dash.exceptions.PreventUpdate
 
@@ -326,6 +321,21 @@ def draw_traces(infos, plot_type, selected_trace, label_by):
 
 
 @callback(
+    Output(select_exp, "data"),
+    Input(load_exp_btn, "n_clicks"),
+)
+def load_experiments(n_clicks):
+    if not n_clicks:
+        # Not clicked
+        raise dash.exceptions.PreventUpdate
+
+    from app.main import api, cache
+
+    df = data.get_all_experiments(api, cache)
+    return df.name
+
+
+@callback(
     Output(mytable, "data"),
     Output(row_drop, "disabled"),
     Input(search_exp_btn, "n_clicks"),
@@ -336,8 +346,10 @@ def search_experiment(n_clicks, experiment_name, use_cache_value):
     if experiment_name is None:
         return [], True
 
-    cache_key = f"search-{experiment_name}"
+    from app.main import cache, api
 
+    cache_key = f"search-{experiment_name}"
+    logger.debug(f"Loading mps data from experiment {experiment_name}")
     df = None
     if use_cache_value in "Use cache":
         df = cache.get(cache_key)
@@ -349,8 +361,11 @@ def search_experiment(n_clicks, experiment_name, use_cache_value):
     # to the cache
     update_cache = False
     if df is None:
+        logger.debug("Fetching mps data from API")
         update_cache = use_cache_value in ["Use cache", "Reset cache"]
         df = data.get_mps_data_by_experiment(api, experiment_name=experiment_name)
+    else:
+        logger.debug("Data loaded from cache")
 
     if update_cache:
         cache.set(cache_key, df)
@@ -370,7 +385,7 @@ def update_page_size(value, data):
     return int(value)
 
 
-@app.callback(
+@callback(
     inputs=[
         Input("select-all-button", "n_clicks"),
         Input("deselect-all-button", "n_clicks"),
@@ -395,8 +410,3 @@ def selection(select_n_clicks, deselect_n_clicks, original_rows, filtered_rows, 
         raise dash.exceptions.PreventUpdate
     else:
         raise dash.exceptions.PreventUpdate
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    app.run_server(debug=True, port=8001)

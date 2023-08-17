@@ -1,7 +1,8 @@
 import plotly.graph_objects as go
-import models
-import enums
 from typing import NamedTuple
+
+from app import models
+from app import enums
 
 
 class PlotData(NamedTuple):
@@ -24,6 +25,15 @@ tracetype2title = {
 }
 
 
+def normalize(x: list[float]) -> list[float]:
+    if len(x) == 0:
+        return x
+    xmin = min(x)
+    xmax = max(x)
+
+    return [(xi - xmin) / (xmax - xmin) for xi in x]
+
+
 def get_plot_data(info: models.MPSData, plot_type: enums.PlotTypes, selected_trace: enums.TraceTypes) -> PlotData:
     trace_type = enums.TraceTypes.from_string(selected_trace)
     plot_type = enums.PlotTypes.from_string(plot_type=plot_type)
@@ -37,30 +47,41 @@ def get_plot_data(info: models.MPSData, plot_type: enums.PlotTypes, selected_tra
             x = [info.unchopped_data.original_times]
             y = [info.unchopped_data.original_trace]
 
-        if plot_type == enums.PlotTypes.original_w_pacing:
+        elif plot_type == enums.PlotTypes.original_w_pacing:
             x = [info.unchopped_data.original_times, info.unchopped_data.original_times]
             y = [info.unchopped_data.original_trace, info.unchopped_data.pacing]
             extra_label = ["original", "pacing"]
 
-        if plot_type == enums.PlotTypes.average:
+        elif plot_type == enums.PlotTypes.average:
             x = [info.chopped_data.time_1std]
             y = [info.chopped_data.trace_1std]
+
+        elif plot_type == enums.PlotTypes.average_normalized:
+            x = [info.chopped_data.time_1std]
+            y = [normalize(info.chopped_data.trace_1std)]
+            ylabel = "Normalized"
 
     else:
         if plot_type == enums.PlotTypes.original:
             x = [info.motion_tracking.time]
             y = [info.motion_tracking.get_motion_array(trace_type.name).original]
-        if plot_type == enums.PlotTypes.original_w_pacing:
+        elif plot_type == enums.PlotTypes.original_w_pacing:
             x = [info.motion_tracking.time, info.motion_tracking.time]
             y = [
                 info.motion_tracking.get_motion_array(trace_type.name),
                 info.motion_tracking.pacing,
             ]
             extra_label = ["original", "pacing"]
-        if plot_type == enums.PlotTypes.average:
+        elif plot_type == enums.PlotTypes.average:
             arr = info.motion_tracking.get_motion_array(trace_type.name)
             x = [arr.average_time]
             y = [arr.average_trace]
+
+        elif plot_type == enums.PlotTypes.average_normalized:
+            arr = info.motion_tracking.get_motion_array(trace_type.name)
+            x = [arr.average_time]
+            y = [normalize(arr.average_trace)]
+            ylabel = "Normalized"
 
     return PlotData(x=x, y=y, ylabel=ylabel, title=title, extra_label=extra_label)
 

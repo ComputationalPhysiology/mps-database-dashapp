@@ -28,7 +28,10 @@ class Api:
             msg = "\n".join(error_messages)
             raise ValueError(msg)
 
-        self._get_access_token()
+        try:
+            self._get_access_token()
+        except requests.exceptions.ConnectTimeout:
+            self._auth = None
 
     def _get_access_token(self):
         response = requests.post(
@@ -68,6 +71,9 @@ class Api:
 
     @property
     def access_headers(self):
+        if self._auth is None:
+            msg = "Api is not connected to the server"
+            raise RuntimeError(msg)
         token = self._auth["access_token"]
         return {"Authorization": f"Bearer {token}"}
 

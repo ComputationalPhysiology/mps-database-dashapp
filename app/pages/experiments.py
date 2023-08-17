@@ -1,20 +1,14 @@
-from dash import Dash, dash_table, Input, Output, callback
-import data
-import os
+from dash import dash_table, Input, Output, callback
+import dash
 import dash_mantine_components as dmc
-from api import Api
 
-api = Api(
-    os.getenv("MPS_DATABASE_USERNAME"),
-    os.getenv("MPS_DATABASE_PASSWORD"),
-    baseurl="http://172.16.16.92:8004",
-)
-df = data.get_all_experiments(api)
-
-app = Dash(__name__)
+from app import data
 
 
-app.layout = dmc.MantineProvider(
+dash.register_page(__name__)
+
+
+layout = dmc.MantineProvider(
     theme={
         "fontFamily": "'Inter', sans-serif",
         "primaryColor": "indigo",
@@ -39,6 +33,7 @@ app.layout = dmc.MantineProvider(
         ),
         dmc.Container(
             [
+                load_exp_btn := dmc.Button("Load experiments"),
                 row_drop := dmc.Select(
                     label="Select number of rows",
                     value="10",
@@ -54,7 +49,6 @@ app.layout = dmc.MantineProvider(
                         {"name": "Created", "id": "created", "type": "text"},
                     ],
                     selected_rows=[],
-                    data=df.to_dict("records"),
                     filter_action="native",
                     page_size=10,
                     row_selectable="single",
@@ -75,27 +69,40 @@ app.layout = dmc.MantineProvider(
 
 
 @callback(
-    Output(my_table, "data"), Output(my_table, "page_size"), Input(row_drop, "value")
+    Output(my_table, "data"),
+    Input(load_exp_btn, "n_clicks"),
 )
-def update_dropdown_options(row_v):
-    dff = df.copy()
+def load_experiments(n_clicks):
+    if not n_clicks:
+        # Not clicked
+        raise dash.exceptions.PreventUpdate
+    from app.main import api, cache
 
+    df = data.get_all_experiments(api, cache)
+    return df.to_dict("records")
+
+
+@callback(Output(my_table, "page_size"), Input(row_drop, "value"))
+def update_dropdown_options(row_v):
     if row_v == "all":
-        row_v = dff.size
+        from app.main import api, cache
+
+        df = data.get_all_experiments(api, cache)
+        row_v = df.size
 
     row_v = int(row_v)
 
-    return dff.to_dict("records"), row_v
+    return row_v
 
 
 @callback(Output(info_text_area, "value"), Input(my_table, "selected_row_ids"))
 def update_selected_rows(selected_row_ids):
-    if selected_row_ids is None:
-        return "No experiment selected"
+    if not selected_row_ids:
+        raise dash.exceptions.PreventUpdate
+
+    from app.main import api, cache
+
+    df = data.get_all_experiments(api, cache)
 
     info = df.loc[selected_row_ids[0]]["info"]
     return info
-
-
-if __name__ == "__main__":
-    app.run_server(debug=True, port=8001)

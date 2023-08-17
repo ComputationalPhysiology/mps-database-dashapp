@@ -1,33 +1,37 @@
-from dash import Dash, dash_table, Input, Output, callback, State, dcc
-import dash
-
-
+from typing import Any
+import logging
 from pathlib import Path
 import os
+
 from flask_caching import Cache
 import dash_mantine_components as dmc
+from dash import Dash, dash_table, Input, Output, callback, State, dcc
+import dash
 
 from api import Api
 import plots
 import data
+import enums
+import config
+
+import models
 
 
 cache = Cache(
     config={
         "CACHE_TYPE": "FileSystemCache",
-        "CACHE_DIR": os.getenv(
-            "MPS_DATABASE_CACHE_DIR", Path.home() / ".cache" / "mps_database"
-        ),
+        "CACHE_DIR": os.getenv("MPS_DATABASE_CACHE_DIR", Path.home() / ".cache" / "mps_database"),
         "CACHE_DEFAULT_TIMEOUT": os.getenv("MPS_DATABASE_CACHE_DEFAULT_TIMEOUT", 3600),
     }
 )
 app = Dash(__name__)
 cache.init_app(app.server)
 
+
 api = Api(
-    os.getenv("MPS_DATABASE_USERNAME"),
-    os.getenv("MPS_DATABASE_PASSWORD"),
-    baseurl=os.getenv("MPS_DATABASE_BASEURL"),
+    username=config.settings.MPS_DATABASE_USERNAME,
+    password=config.settings.MPS_DATABASE_PASSWORD,
+    baseurl=config.settings.MPS_DATABASE_BASEURL,
 )
 df = data.get_all_experiments(api, cache)
 
@@ -48,11 +52,7 @@ app.layout = dmc.MantineProvider(
     children=[
         dmc.Header(
             height=60,
-            children=[
-                dmc.Title(
-                    "MPS data table", style={"textAlign": "center", "height": "200px"}
-                )
-            ],
+            children=[dmc.Title("MPS data table", style={"textAlign": "center", "height": "200px"})],
             style={"marginTop": 20},
         ),
         dmc.Container(
@@ -77,9 +77,7 @@ app.layout = dmc.MantineProvider(
                             span=2,
                         ),
                         dmc.Col(
-                            search_exp_btn := dmc.Button(
-                                "Search", style={"marginTop": 25}, n_clicks=0
-                            ),
+                            search_exp_btn := dmc.Button("Search", style={"marginTop": 25}, n_clicks=0),
                             span=2,
                         ),
                         dmc.Col(
@@ -175,69 +173,84 @@ app.layout = dmc.MantineProvider(
             },
         ),
         dcc.Store(id="mps-data-store"),
-        dmc.Container(
-            children=[
-                dmc.Container(
-                    children=[
-                        dmc.Grid(
-                            children=[
-                                dmc.Col(
-                                    trace_select_db := dmc.Select(
-                                        label="Select Trace",
-                                        value="fluorescence",
-                                        data=[
-                                            {
-                                                "value": "fluorescence",
-                                                "label": "Fluorescence",
-                                            },
-                                            {
-                                                "value": "displacement_norm",
-                                                "label": "Displacement norm",
-                                            },
-                                        ],
+        dmc.LoadingOverlay(
+            dmc.Container(
+                children=[
+                    dmc.Container(
+                        children=[
+                            dmc.Grid(
+                                children=[
+                                    dmc.Col(
+                                        trace_select_db := dmc.Select(
+                                            label="Select Trace",
+                                            value="fluorescence",
+                                            data=[
+                                                {
+                                                    "value": enums.TraceTypes.fluorescence,
+                                                    "label": "Fluorescence",
+                                                },
+                                                {
+                                                    "value": enums.TraceTypes.displacement_norm,
+                                                    "label": "Displacement norm",
+                                                },
+                                            ],
+                                        ),
+                                        span=4,
                                     ),
-                                    span=4,
-                                ),
-                                dmc.Col(
-                                    plot_select_db := dmc.Select(
-                                        label="Select plot",
-                                        value="original_trace",
-                                        data=[
-                                            {
-                                                "value": "original_trace",
-                                                "label": "Original Trace",
-                                            },
-                                            {
-                                                "value": "original_trace_w_paing",
-                                                "label": "Original trace wit pacing",
-                                            },
-                                            {"value": "average", "label": "Average"},
-                                            {
-                                                "value": "average_normalized",
-                                                "label": "Average (normalized)",
-                                            },
-                                        ],
+                                    dmc.Col(
+                                        plot_select_db := dmc.Select(
+                                            label="Select plot",
+                                            value="original",
+                                            data=[
+                                                {
+                                                    "value": enums.PlotTypes.original,
+                                                    "label": "Original Trace",
+                                                },
+                                                {
+                                                    "value": enums.PlotTypes.original_w_pacing,
+                                                    "label": "Original trace with pacing",
+                                                },
+                                                {
+                                                    "value": enums.PlotTypes.average,
+                                                    "label": "Average",
+                                                },
+                                                {
+                                                    "value": enums.PlotTypes.average_normalized,
+                                                    "label": "Average (normalized)",
+                                                },
+                                                {
+                                                    "value": enums.PlotTypes.chopped,
+                                                    "label": "Chopped",
+                                                },
+                                                {
+                                                    "value": enums.PlotTypes.chopped_aligned,
+                                                    "label": "Chopped",
+                                                },
+                                                {
+                                                    "value": enums.PlotTypes.corrected_and_background,
+                                                    "label": "Chopped",
+                                                },
+                                            ],
+                                        ),
+                                        span=4,
                                     ),
-                                    span=4,
-                                ),
-                                dmc.Col(
-                                    labelby_select_db := dmc.Select(
-                                        label="Label by",
+                                    dmc.Col(
+                                        labelby_select_db := dmc.Select(label="Label by", value="id"),
+                                        span=4,
                                     ),
-                                    span=4,
-                                ),
-                            ]
-                        )
-                    ]
-                ),
-                dmc.Container(children=[dcc.Graph(id="graph")]),
-            ],
+                                ]
+                            )
+                        ]
+                    ),
+                    dmc.Container(children=[dcc.Graph(id="graph")]),
+                ],
+            ),
         ),
     ],
 )
 
 
-def get_detailed_info(row_ids: list[int], use_cache_value: str):
+def get_detailed_info(row_ids: list[int], use_cache_value: str) -> list[dict[str, Any]]:
     info = {}
 
     if use_cache_value == "Use cache":
@@ -276,13 +289,16 @@ def get_detailed_info(row_ids: list[int], use_cache_value: str):
     State(use_cache_mps_data_load_db, "value"),
 )
 def search_mps_data(n_clicks, selected_rows, filtered_rows, use_cache_value):
-    print(f"{selected_rows=}, {filtered_rows=}")
+    print("Search mps_data")
     if selected_rows is None or len(selected_rows) == 0:
         raise dash.exceptions.PreventUpdate
 
     rows = [filtered_rows[i]["id"] for i in selected_rows]
     info = get_detailed_info(rows, use_cache_value=use_cache_value)
-    plot_labels = [] if len(info) == 0 else info[0].get("plot_labels", [])
+    plot_labels = []
+    if len(info) > 0:
+        values = info[0].get("plot_label_values", {})
+        plot_labels = [label for label, value in values.items() if isinstance(value, (int, str))]
 
     return info, plot_labels
 
@@ -292,15 +308,20 @@ def search_mps_data(n_clicks, selected_rows, filtered_rows, use_cache_value):
     Input("mps-data-store", "data"),
     Input(plot_select_db, "value"),
     Input(trace_select_db, "value"),
+    Input(labelby_select_db, "value"),
 )
-def draw_traces(info, plot_type, trace_type):
+def draw_traces(infos, plot_type, selected_trace, label_by):
     if plot_type is None:
         return {}
-    if info is None or len(info) == 0:
+    if infos is None or len(infos) == 0:
         return {}
 
-    fig = plots.plot_original_trace(info)
-
+    fig = plots.plot(
+        [models.MPSData(**info) for info in infos],
+        selected_trace=selected_trace,
+        plot_type=plot_type,
+        label_by=label_by,
+    )
     return fig
 
 
@@ -361,18 +382,14 @@ def update_page_size(value, data):
         State(mytable, "derived_virtual_selected_rows"),
     ],
 )
-def selection(
-    select_n_clicks, deselect_n_clicks, original_rows, filtered_rows, selected_rows
-):
+def selection(select_n_clicks, deselect_n_clicks, original_rows, filtered_rows, selected_rows):
     ctx = dash.callback_context.triggered[0]
     ctx_caller = ctx["prop_id"]
     if filtered_rows is not None:
         if ctx_caller == "select-all-button.n_clicks":
             selected_ids = [row["id"] for row in filtered_rows]
             print(selected_ids)
-            return [
-                [i for i, row in enumerate(original_rows) if row["id"] in selected_ids]
-            ]
+            return [[i for i, row in enumerate(original_rows) if row["id"] in selected_ids]]
         if ctx_caller == "deselect-all-button.n_clicks":
             return [[]]
         raise dash.exceptions.PreventUpdate
@@ -381,4 +398,5 @@ def selection(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     app.run_server(debug=True, port=8001)

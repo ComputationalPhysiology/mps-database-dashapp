@@ -1,14 +1,33 @@
+import logging
 import requests
 import json
+
+logger = logging.getLogger(__name__)
 
 
 class Api:
     def __init__(self, username, password, baseurl, timeout=15) -> None:
+        logger.info("Create api instance")
+
+        error_messages = []
+        if username is None:
+            error_messages.append("No username provided. Please the the environment variable 'MPS_DATABASE_USERNAME'")
+
+        if password is None:
+            error_messages.append("No password provided. Please the the environment variable 'MPS_DATABASE_PASSWORD'")
+
+        if baseurl is None:
+            error_messages.append("No base url provided. Please the the environment variable 'MPS_DATABASE_BASEURL'")
+
         self._username = username
         self._password = password
         self._baseurl = baseurl
         self._timeout = timeout
-        print("Create api")
+
+        if error_messages:
+            msg = "\n".join(error_messages)
+            raise ValueError(msg)
+
         self._get_access_token()
 
     def _get_access_token(self):
@@ -21,35 +40,29 @@ class Api:
         self._auth = response.json()
 
     def _get(self, url):
-        print(f"Get {url}")
+        logger.info(f"Get {url}")
         response = requests.get(url, headers=self.access_headers, timeout=self._timeout)
 
         if response.status_code == 401:
             self._get_access_token()
-            response = requests.get(
-                url, headers=self.access_headers, timeout=self._timeout
-            )
+            response = requests.get(url, headers=self.access_headers, timeout=self._timeout)
 
         if not response.status_code == 200:
             msg = f"Failed to get url {url}: {response.text}"
-            print(msg)
+            logger.warning(msg)
             return msg
         return json.loads(response.content)
 
     def _post(self, url, data):
-        print(f"Post {url}: {data}")
-        response = requests.post(
-            url, json=data, headers=self.access_headers, timeout=self._timeout
-        )
+        logger.info(f"Post {url}: {data}")
+        response = requests.post(url, json=data, headers=self.access_headers, timeout=self._timeout)
         if response.status_code == 401:
             self._get_access_token()
-            response = requests.post(
-                url, json=data, headers=self.access_headers, timeout=self._timeout
-            )
+            response = requests.post(url, json=data, headers=self.access_headers, timeout=self._timeout)
 
         if not response.status_code == 200:
             msg = f"Request to url {url} failed with data {data}: " f"{response.text}"
-            print(msg)
+            logger.warning(msg)
             return msg
         return json.loads(response.content)
 
@@ -83,9 +96,7 @@ class Api:
             f"{self._baseurl}/mps_data/{mps_data_id}",
         )
 
-    def tissue_detection(
-        self, mps_data_id, mask_sigma, method, template_name, transpose_template
-    ):
+    def tissue_detection(self, mps_data_id, mask_sigma, method, template_name, transpose_template):
         return self._get(
             f"{self._baseurl}/mps_data/tissue-detection/{mps_data_id}?mask_sigma={mask_sigma}&method={method}&template_name={template_name}&transpose_template={transpose_template}",
         )

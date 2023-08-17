@@ -3,3 +3,5 @@ dash-mantine-components
 pandas
 plotly
 Flask-Caching
+pydantic
+pydantic-settings

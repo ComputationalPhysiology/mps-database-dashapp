@@ -36,14 +36,6 @@ SIDEBAR_STYLE = {
     "background-color": "#f8f9fa",
 }
 
-# the styles for the main content position it to the right of the sidebar and
-# add some padding.
-CONTENT_STYLE = {
-    "margin-left": "18rem",
-    "margin-right": "2rem",
-    "padding": "2rem 1rem",
-}
-
 sidebar = dmc.Container(
     [
         dmc.Navbar(
@@ -92,7 +84,7 @@ app.layout = dmc.MantineProvider(
         dmc.Grid(
             children=[
                 dmc.Col(html.Div("MPS database", style={"fontSize": 50, "textAlign": "center"}), span=12),
-                dmc.Col([sidebar], span=2),
+                dmc.Col([sidebar], span="content"),
                 dmc.Col([dash.page_container], span="auto"),
             ],
         )

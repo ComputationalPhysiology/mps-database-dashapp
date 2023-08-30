@@ -40,14 +40,10 @@ layout = dmc.MantineProvider(
                     children=[
                         dmc.Col(
                             load_exp_btn := dmc.Button("Load experiments"),
-                            span=3,
+                            span="content",
                         ),
-                        dmc.Col(dmc.Alert("test", title="Success!", color="green"), span=9),
+                        dmc.Col(load_exp_alert := dmc.Alert("", color="green", style={"display": "none"}), span="auto"),
                     ],
-                    style={
-                        "align": "center",
-                        "justify": "center",
-                    },
                 ),
                 dmc.Grid(
                     children=[
@@ -147,13 +143,16 @@ layout = dmc.MantineProvider(
             children=[
                 dmc.Grid(
                     children=[
-                        dmc.Col(search_mps_data_btn := dmc.Button("Load data"), span=2),
+                        dmc.Col(search_mps_data_btn := dmc.Button("Load data"), span="content"),
                         dmc.Col(
                             use_cache_mps_data_load_db := dmc.Select(
                                 value="Use cache",
                                 data=["No caching", "Use cache", "Reset cache"],
                             ),
-                            span=2,
+                            span="content",
+                        ),
+                        dmc.Col(
+                            load_data_alert := dmc.Alert("", color="green", style={"display": "none"}), span="auto"
                         ),
                     ]
                 ),
@@ -280,6 +279,8 @@ def get_detailed_info(row_ids: list[int], use_cache_value: str) -> list[dict[str
 @callback(
     Output("mps-data-store", "data"),
     Output(labelby_select_db, "data"),
+    Output(load_data_alert, "children"),
+    Output(load_data_alert, "style"),
     Input(search_mps_data_btn, "n_clicks"),
     State(mytable, "derived_virtual_selected_rows"),
     State(mytable, "derived_virtual_data"),
@@ -299,7 +300,7 @@ def search_mps_data(n_clicks, selected_rows, filtered_rows, use_cache_value):
         values = info[0].get("plot_label_values", {})
         plot_labels = [label for label, value in values.items() if isinstance(value, (int, str))]
 
-    return info, plot_labels
+    return info, plot_labels, f"Loaded {len(info)} datasets", {"display": "block"}
 
 
 @callback(
@@ -326,6 +327,8 @@ def draw_traces(infos, plot_type, selected_trace, label_by):
 
 @callback(
     Output(select_exp, "data"),
+    Output(load_exp_alert, "children"),
+    Output(load_exp_alert, "style"),
     Input(load_exp_btn, "n_clicks"),
 )
 def load_experiments(n_clicks):
@@ -336,7 +339,8 @@ def load_experiments(n_clicks):
     from app.main import api, cache
 
     df = data.get_all_experiments(api, cache)
-    return df.name
+
+    return df.name, f"Loaded {len(df)} experiments", {"display": "block"}
 
 
 @callback(

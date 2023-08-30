@@ -13,7 +13,7 @@ from app import models
 
 logger = logging.getLogger(__name__)
 
-dash.register_page(__name__, path="/")
+dash.register_page(__name__)
 
 layout = dmc.MantineProvider(
     theme={
@@ -31,7 +31,7 @@ layout = dmc.MantineProvider(
     children=[
         dmc.Header(
             height=60,
-            children=[dmc.Title("MPS data table", style={"textAlign": "center", "height": "200px"})],
+            children=[dmc.Title("MPS data table", order=2, style={"textAlign": "center", "height": "200px"})],
             style={"marginTop": 20},
         ),
         dmc.Container(
@@ -40,10 +40,14 @@ layout = dmc.MantineProvider(
                     children=[
                         dmc.Col(
                             load_exp_btn := dmc.Button("Load experiments"),
-                            span=5,
+                            span=3,
                         ),
-                        dmc.Col(dmc.Alert("test", title="Success!", color="green"), span=7),
-                    ]
+                        dmc.Col(dmc.Alert("test", title="Success!", color="green"), span=9),
+                    ],
+                    style={
+                        "align": "center",
+                        "justify": "center",
+                    },
                 ),
                 dmc.Grid(
                     children=[

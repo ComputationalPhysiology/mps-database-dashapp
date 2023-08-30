@@ -1,6 +1,8 @@
-from dash import Dash
+from dash import Dash, html
 import dash
+import dash_mantine_components as dmc
 from flask_caching import Cache
+
 
 from app.api import Api
 from app.config import settings
@@ -14,6 +16,7 @@ cache = Cache(
 )
 
 app = Dash(__name__, use_pages=True)
+server = app.server
 cache.init_app(app.server)
 
 api = Api(
@@ -23,15 +26,75 @@ api = Api(
     timeout=15,
 )
 
-app.layout = dash.html.Div(
+SIDEBAR_STYLE = {
+    "position": "fixed",
+    "top": 0,
+    "left": 0,
+    "bottom": 0,
+    "width": "16rem",
+    "padding": "2rem 1rem",
+    "background-color": "#f8f9fa",
+}
+
+# the styles for the main content position it to the right of the sidebar and
+# add some padding.
+CONTENT_STYLE = {
+    "margin-left": "18rem",
+    "margin-right": "2rem",
+    "padding": "2rem 1rem",
+}
+
+sidebar = dmc.Container(
     [
-        dash.html.H1("Multi-page app with Dash Pages"),
-        dash.html.Div(
-            [
-                dash.html.Div(dash.dcc.Link(f"{page['name']} - {page['path']}", href=page["relative_path"]))
-                for page in dash.page_registry.values()
-            ]
+        dmc.Navbar(
+            p="md",
+            width={"base": 300},
+            height=500,
+            fixed=True,
+            children=[
+                dmc.Header(
+                    height=60,
+                    children=[dmc.Title("MPS database", order=3, style={"textAlign": "center", "height": "200px"})],
+                ),
+                dmc.Anchor("Home", href="/", underline=False),
+                dmc.Anchor("Experiments", href="/experiments", underline=False),
+                dmc.Anchor("MPS data", href="/mpsdata", underline=False),
+            ],
         ),
-        dash.page_container,
-    ]
+    ],
+    style=SIDEBAR_STYLE,
+)
+
+sidebar = dmc.Navbar(
+    p="md",
+    children=[
+        dmc.Anchor("Home", href="/", underline=False),
+        dmc.Anchor("Experiments", href="/experiments", underline=False),
+        dmc.Anchor("MPS data", href="/mpsdata", underline=False),
+    ],
+)
+
+
+app.layout = dmc.MantineProvider(
+    theme={
+        "fontFamily": "'Inter', sans-serif",
+        "primaryColor": "indigo",
+        "components": {
+            "Button": {"styles": {"root": {"fontWeight": 400}}},
+            "Alert": {"styles": {"title": {"fontWeight": 500}}},
+            "AvatarGroup": {"styles": {"truncated": {"fontWeight": 500}}},
+        },
+    },
+    inherit=True,
+    withGlobalStyles=True,
+    withNormalizeCSS=True,
+    children=[
+        dmc.Grid(
+            children=[
+                dmc.Col(html.Div("MPS database", style={"fontSize": 50, "textAlign": "center"}), span=12),
+                dmc.Col([sidebar], span=2),
+                dmc.Col([dash.page_container], span="auto"),
+            ],
+        )
+    ],
 )

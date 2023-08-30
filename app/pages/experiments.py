@@ -26,6 +26,7 @@ layout = dmc.MantineProvider(
             children=[
                 dmc.Title(
                     "Experiments table",
+                    order=2,
                     style={"textAlign": "center", "height": "200px"},
                 )
             ],
